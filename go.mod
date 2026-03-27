@@ -3,7 +3,7 @@ module github.com/raaaaaaaay86/nosfranz
 go 1.25.0
 
 require (
-	github.com/raaaaaaaay86/noskafka v0.0.1
+	github.com/raaaaaaaay86/noskafka v0.0.2
 	github.com/stretchr/testify v1.11.1
 	github.com/twmb/franz-go v1.20.7
 )
@@ -17,4 +17,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
