@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nos/noskafka"
+	"github.com/raaaaaaaay86/noskafka"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/twmb/franz-go/pkg/kgo"

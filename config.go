@@ -3,7 +3,7 @@ package nosfranz
 import (
 	"time"
 
-	"github.com/nos/noskafka"
+	"github.com/raaaaaaaay86/noskafka"
 )
 
 type Config struct {

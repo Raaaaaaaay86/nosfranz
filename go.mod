@@ -1,9 +1,9 @@
-module nosfranz
+module github.com/raaaaaaaay86/nosfranz
 
 go 1.25.0
 
 require (
-	github.com/nos/noskafka v0.1.0
+	github.com/raaaaaaaay86/noskafka v0.0.1
 	github.com/stretchr/testify v1.11.1
 	github.com/twmb/franz-go v1.20.7
 )
@@ -18,4 +18,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/nos/noskafka v0.1.0 => ../noskafka

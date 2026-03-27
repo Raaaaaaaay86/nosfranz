@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/nos/noskafka"
+	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
