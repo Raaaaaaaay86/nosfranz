@@ -68,40 +68,27 @@ func (s *FranzConsumerTestSuite) TestWhenSignalChanSet() {
 	assert.Equal(t, fmt.Sprintf("%p", ch), fmt.Sprintf("%p", consumer.signalChan), "memory address must equal to the `ch` which previous set")
 }
 
-func (s *FranzConsumerTestSuite) TestStopWhenNotStarted() {
+func (s *FranzConsumerTestSuite) TestCloseWhenNotStarted() {
 	t := s.T()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	consumer := s.newConsumer()
-	done := consumer.Stop(ctx)
-
-	select {
-	case <-done:
-		// success
-	case <-ctx.Done():
-		t.Fatal("Stop timed out when not started")
-	}
+	err := consumer.Close()
+	assert.NoError(t, err)
 }
 
-func (s *FranzConsumerTestSuite) TestStopAfterStarted() {
+func (s *FranzConsumerTestSuite) TestCloseAfterStarted() {
 	t := s.T()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	consumer := s.newConsumer()
-	consumer.Start(ctx)
+	err := consumer.Start(ctx)
+	assert.NoError(t, err)
 
-	done := consumer.Stop(ctx)
-	select {
-	case <-done:
-		// success
-		assert.False(t, consumer.started.Load(), "`started` property should be set to false after called Stop()")
-	case <-ctx.Done():
-		t.Fatal("Stop timed out after started")
-	}
+	err = consumer.Close()
+	assert.NoError(t, err)
+	assert.False(t, consumer.started.Load(), "`started` property should be set to false after called Close()")
 }
 
 func (s *FranzConsumerTestSuite) TestClose() {
@@ -111,15 +98,13 @@ func (s *FranzConsumerTestSuite) TestClose() {
 	defer cancel()
 
 	consumer := s.newConsumer()
-	consumer.Start(ctx)
-
-	// 等待 client 初始化完成 (因為是背景執行的)
-	s.waitForClientInitialized(ctx, consumer)
+	err := consumer.Start(ctx)
+	assert.NoError(t, err)
 
 	assert.NotNil(t, consumer.client, "client should not be nil")
 	assert.True(t, consumer.started.Load(), "started should be true")
 
-	err := consumer.Close()
+	err = consumer.Close()
 	assert.NoError(t, err)
 	assert.False(t, consumer.started.Load(), "`started` should be false after called Close()")
 	assert.True(t, consumer.closed.Load(), "`closed` should be true after called Close()")
@@ -127,8 +112,6 @@ func (s *FranzConsumerTestSuite) TestClose() {
 }
 
 func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
-	t := s.T()
-
 	type testCase struct {
 		Message      string
 		MutateConfig func(cfg *Config)
@@ -151,7 +134,7 @@ func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
 							break
 						}
 					}
-					assert.True(t, found, "every provided topics should be set in the kgo.Client")
+					assert.True(s.T(), found, "every provided topics should be set in the kgo.Client")
 				}
 			},
 		},
@@ -161,7 +144,7 @@ func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
 				cfg.ConnectionInfo.GroupId = "internal_test_group"
 			},
 			Assert: func(consumer *FranzConsumer, kgoCfg reflect.Value) {
-				assert.Equal(t, "internal_test_group", kgoCfg.FieldByName("group").String())
+				assert.Equal(s.T(), "internal_test_group", kgoCfg.FieldByName("group").String())
 			},
 		},
 		{
@@ -171,8 +154,8 @@ func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
 			},
 			Assert: func(consumer *FranzConsumer, kgoCfg reflect.Value) {
 				brokers := kgoCfg.FieldByName("seedBrokers")
-				assert.Equal(t, 1, brokers.Len())
-				assert.Equal(t, "127.0.0.1:9092", brokers.Index(0).String())
+				assert.Equal(s.T(), 1, brokers.Len())
+				assert.Equal(s.T(), "127.0.0.1:9092", brokers.Index(0).String())
 			},
 		},
 		{
@@ -181,7 +164,7 @@ func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
 				cfg.AutoCommit = false
 			},
 			Assert: func(consumer *FranzConsumer, kgoCfg reflect.Value) {
-				assert.True(t, kgoCfg.FieldByName("autocommitDisable").Bool(), "When AutoCommit is false, autocommitDisable should be true")
+				assert.True(s.T(), kgoCfg.FieldByName("autocommitDisable").Bool(), "When AutoCommit is false, autocommitDisable should be true")
 			},
 		},
 		{
@@ -190,7 +173,7 @@ func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
 				cfg.AutoCommit = true
 			},
 			Assert: func(consumer *FranzConsumer, kgoCfg reflect.Value) {
-				assert.False(t, kgoCfg.FieldByName("autocommitDisable").Bool(), "When AutoCommit is true, autocommitDisable should be false")
+				assert.False(s.T(), kgoCfg.FieldByName("autocommitDisable").Bool(), "When AutoCommit is true, autocommitDisable should be false")
 			},
 		},
 	}
@@ -211,8 +194,8 @@ func (s *FranzConsumerTestSuite) TestCheckFranzInternalConfig() {
 			tc.MutateConfig(&cfg)
 			consumer := NewFranzConsumer(cfg)
 
-			go consumer.Start(ctx)
-			s.waitForClientInitialized(ctx, consumer)
+			err := consumer.Start(ctx)
+			assert.NoError(s.T(), err)
 
 			// use reflection to extract value of `cfg`
 			clientVal := reflect.ValueOf(consumer.getClient())
@@ -274,7 +257,8 @@ func (s *FranzConsumerTestSuite) TestIntegration() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	consumer.Start(ctx)
+	err := consumer.Start(ctx)
+	assert.NoError(s.T(), err)
 
 	for i := 0; i < 10; i++ {
 		select {
@@ -285,23 +269,64 @@ func (s *FranzConsumerTestSuite) TestIntegration() {
 		}
 	}
 
-	<-consumer.Stop(ctx)
 	consumer.Close()
 }
 
-func (s *FranzConsumerTestSuite) waitForClientInitialized(ctx context.Context, consumer *FranzConsumer) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
+func (s *FranzConsumerTestSuite) TestBatchIntegration() {
+	if testing.Short() {
+		s.T().Skip("skipping integration test in short mode")
+	}
+
+	now := time.Now().UnixNano()
+	topic := fmt.Sprintf("test-batch-topic-%d", now)
+	group := fmt.Sprintf("test-batch-group-%d", now)
+
+	batchSize := 5
+	totalMessages := 10
+	s.produceTestData(topic, totalMessages)
+
+	var count int32
+	processed := make(chan int, 2) // We expect 2 batches of 5
+
+	cfg := Config{
+		ConnectionInfo: noskafka.ConnectionInfo{
+			Brokers: s.defaultBrokers,
+			GroupId: noskafka.GroupId(group),
+			Topics:  []noskafka.Topic{noskafka.Topic(topic)},
+		},
+		BatchHandlers: []noskafka.BatchHandlerFunc{
+			func(c *noskafka.BatchContext) {
+				atomic.AddInt32(&count, int32(len(c.Messages)))
+				processed <- len(c.Messages)
+			},
+		},
+		AutoCommit:   true,
+		BatchSize:    batchSize,
+		BatchTimeout: 2 * time.Second,
+	}
+
+	consumer := NewFranzBatchConsumer(cfg)
+	consumer.SetIdentifier(noskafka.Identifier(2))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err := consumer.Start(ctx)
+	assert.NoError(s.T(), err)
+
+	for i := 0; i < 2; i++ {
 		select {
-		case <-ticker.C:
-			if consumer.getClient() != nil {
-				return
-			}
-		case <-ctx.Done():
-			return
+		case size := <-processed:
+			s.T().Logf("received batch %d with size %d", i, size)
+			assert.Equal(s.T(), batchSize, size)
+		case <-time.After(15 * time.Second):
+			s.T().Fatalf("timed out waiting for batch %d, total processed: %d", i, atomic.LoadInt32(&count))
 		}
 	}
+
+	assert.Equal(s.T(), int32(totalMessages), atomic.LoadInt32(&count))
+
+	consumer.Close()
 }
 
 func (s *FranzConsumerTestSuite) produceTestData(topic string, n int) {

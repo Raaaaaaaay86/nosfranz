@@ -6,6 +6,7 @@ require (
 	github.com/raaaaaaaay86/noskafka v0.0.2
 	github.com/stretchr/testify v1.11.1
 	github.com/twmb/franz-go v1.20.7
+	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da
 )
 
 require (
@@ -14,6 +15,8 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.12.0 // indirect
-	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/raaaaaaaay86/noskafka => ../noskafka

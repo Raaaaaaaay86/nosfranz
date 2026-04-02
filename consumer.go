@@ -8,16 +8,18 @@ import (
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/xerrors"
 )
 
 var _ noskafka.Consumer = (*FranzConsumer)(nil)
 
 type FranzConsumer struct {
 	identifier noskafka.Identifier
-	signalChan chan noskafka.Signal
+	signalChan chan<- noskafka.Signal
 	config     Config
 	mu         sync.RWMutex
 	client     *kgo.Client
+	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
 	started    atomic.Bool
@@ -30,32 +32,31 @@ func NewFranzConsumer(config Config) *FranzConsumer {
 	}
 }
 
-func (f *FranzConsumer) Start(ctx context.Context) {
+func (f *FranzConsumer) Start(ctx context.Context) error {
 	if f.started.Swap(true) { // for idempotency
-		return
+		return nil
 	}
 	f.closed.Store(false)
 
-	ctx, cancel := context.WithCancel(ctx)
-	f.cancel = cancel
-	f.wg.Add(1)
-	go f.run(ctx)
-}
-
-func (f *FranzConsumer) run(ctx context.Context) {
-	defer f.wg.Done()
-
 	cl, err := f.initClient()
 	if err != nil {
-		f.sendSignal(noskafka.FailureSignalLevel, "failed to create franz-go client", err)
-		slog.Error("failed to create franz-go client", "error", err)
-		return
+		f.started.Store(false)
+		return xerrors.Errorf("failed to create franz-go client: %w", err)
 	}
 
 	f.mu.Lock()
 	f.client = cl
 	f.mu.Unlock()
 
+	f.ctx, f.cancel = context.WithCancel(ctx)
+	f.wg.Add(1)
+	go f.run()
+
+	return nil
+}
+
+func (f *FranzConsumer) run() {
+	defer f.wg.Done()
 	defer f.cleanupClient()
 
 	for {
@@ -64,18 +65,20 @@ func (f *FranzConsumer) run(ctx context.Context) {
 			return
 		}
 
-		fetches := client.PollRecords(ctx, -1)
+		fetches := client.PollRecords(f.ctx, -1)
 		if fetches.IsClientClosed() {
 			return
 		}
 		if err := fetches.Err(); err != nil && err != context.Canceled {
 			f.sendSignal(noskafka.ErrorSignalLevel, "poll error", err)
+			// If error is fatal, we might want to send FailureSignalLevel
+			// For now, let's keep it as Error unless it's a known fatal error
 		}
 
-		f.processFetches(ctx, client, fetches)
+		f.processFetches(f.ctx, client, fetches)
 
 		select {
-		case <-ctx.Done():
+		case <-f.ctx.Done():
 			return
 		default:
 		}
@@ -174,25 +177,6 @@ func (f *FranzConsumer) processRecord(ctx context.Context, r *kgo.Record) bool {
 	return nctx.Err() == nil
 }
 
-func (f *FranzConsumer) Stop(ctx context.Context) <-chan struct{} {
-	if f.cancel != nil {
-		f.cancel()
-	}
-
-	done := make(chan struct{})
-	go func() {
-		f.wg.Wait()
-		f.started.Store(false)
-		close(done)
-	}()
-
-	return done
-}
-
-func (f *FranzConsumer) GetConnectionInfo() noskafka.ConnectionInfo {
-	return f.config.ConnectionInfo
-}
-
 func (f *FranzConsumer) SetIdentifier(identifier noskafka.Identifier) {
 	f.identifier = identifier
 }
@@ -201,8 +185,12 @@ func (f *FranzConsumer) GetIdentifier() noskafka.Identifier {
 	return f.identifier
 }
 
-func (f *FranzConsumer) SetSignalChan(ch chan noskafka.Signal) {
+func (f *FranzConsumer) SetSignalChan(ch chan<- noskafka.Signal) {
 	f.signalChan = ch
+}
+
+func (f *FranzConsumer) GetConnectionInfo() noskafka.ConnectionInfo {
+	return f.config.ConnectionInfo
 }
 
 func (f *FranzConsumer) Close() error {
