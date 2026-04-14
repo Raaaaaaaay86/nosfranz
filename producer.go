@@ -2,16 +2,25 @@ package nosfranz
 
 import (
 	"context"
-"github.com/raaaaaaaay86/noskafka"
+
+	"github.com/raaaaaaaay86/noskafka"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"golang.org/x/xerrors"
 )
 
 var _ noskafka.Producer = (*Producer)(nil)
 
+type TopicConfig struct {
+	NumPartitions     int32
+	ReplicationFactor int16
+}
+
 type ProducerConfig struct {
-	Brokers    []string
-	BufferSize int
+	Brokers     []string
+	BufferSize  int
+	// AutoCreateTopic, when non-nil, creates missing topics before producing.
+	AutoCreateTopic *TopicConfig
 }
 
 type produceRequest struct {
@@ -21,9 +30,12 @@ type produceRequest struct {
 }
 
 type Producer struct {
-	client   *kgo.Client
-	requests chan produceRequest
-	ctx      context.Context
+	client        *kgo.Client
+	admin         *kadm.Client
+	config        ProducerConfig
+	requests      chan produceRequest
+	ctx           context.Context
+	createdTopics map[string]struct{}
 }
 
 func NewFranzProducer(config ProducerConfig) (*Producer, error) {
@@ -40,8 +52,11 @@ func NewFranzProducer(config ProducerConfig) (*Producer, error) {
 	}
 
 	return &Producer{
-		client:   client,
-		requests: make(chan produceRequest, bufSize),
+		client:        client,
+		admin:         kadm.NewClient(client),
+		config:        config,
+		requests:      make(chan produceRequest, bufSize),
+		createdTopics: make(map[string]struct{}),
 	}, nil
 }
 
@@ -59,6 +74,12 @@ func (p *Producer) loop(ctx context.Context) {
 			if req.ctx.Err() != nil {
 				req.errCh <- nil
 				continue
+			}
+			if p.config.AutoCreateTopic != nil {
+				if err := p.ensureTopics(req.ctx, req.records); err != nil {
+					req.errCh <- err
+					continue
+				}
 			}
 			err := p.client.ProduceSync(req.ctx, req.records...).FirstErr()
 			req.errCh <- err
@@ -112,6 +133,32 @@ func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, 
 	case err := <-req.errCh:
 		return err
 	}
+}
+
+func (p *Producer) ensureTopics(ctx context.Context, records []*kgo.Record) error {
+	topics := make([]string, 0, len(records))
+	for _, r := range records {
+		if _, ok := p.createdTopics[r.Topic]; !ok {
+			topics = append(topics, r.Topic)
+		}
+	}
+	if len(topics) == 0 {
+		return nil
+	}
+
+	cfg := p.config.AutoCreateTopic
+	responses, err := p.admin.CreateTopics(ctx, cfg.NumPartitions, cfg.ReplicationFactor, nil, topics...)
+	if err != nil {
+		return xerrors.Errorf("failed to create topics: %w", err)
+	}
+	if err := responses.Error(); err != nil {
+		return err
+	}
+
+	for _, topic := range topics {
+		p.createdTopics[topic] = struct{}{}
+	}
+	return nil
 }
 
 func (p *Producer) Close() {
