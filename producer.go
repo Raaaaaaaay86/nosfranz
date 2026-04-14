@@ -159,6 +159,7 @@ func (p *Producer) ensureTopics(ctx context.Context, records []*kgo.Record) erro
 		}
 	}
 
+	// record checked topic
 	for _, topic := range topics {
 		p.createdTopics[topic] = struct{}{}
 	}
