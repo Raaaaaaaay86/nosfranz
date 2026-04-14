@@ -2,35 +2,28 @@ package nosfranz
 
 import (
 	"context"
-	"sync"
-
-	"github.com/raaaaaaaay86/noskafka"
+"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"golang.org/x/xerrors"
 )
 
 var _ noskafka.Producer = (*Producer)(nil)
 
-// ProducerConfig holds configuration for the franz-go Producer.
 type ProducerConfig struct {
-	Brokers []string
-	// BufferSize is the capacity of the input channel. When full, Produce blocks (backpressure).
+	Brokers    []string
 	BufferSize int
-	// Workers is the number of goroutines concurrently consuming from the input channel.
-	Workers int
 }
 
-type produceJob struct {
+type produceRequest struct {
 	ctx     context.Context
 	records []*kgo.Record
 	errCh   chan error
 }
 
 type Producer struct {
-	client *kgo.Client
-	in     chan produceJob
-	quit   chan struct{}
-	wg     sync.WaitGroup
+	client   *kgo.Client
+	requests chan produceRequest
+	ctx      context.Context
 }
 
 func NewFranzProducer(config ProducerConfig) (*Producer, error) {
@@ -45,39 +38,39 @@ func NewFranzProducer(config ProducerConfig) (*Producer, error) {
 	if bufSize <= 0 {
 		bufSize = 100
 	}
-	workers := config.Workers
-	if workers <= 0 {
-		workers = 1
-	}
 
-	p := &Producer{
-		client: client,
-		in:     make(chan produceJob, bufSize),
-		quit:   make(chan struct{}),
-	}
-
-	for range workers {
-		p.wg.Add(1)
-		go p.worker()
-	}
-
-	return p, nil
+	return &Producer{
+		client:   client,
+		requests: make(chan produceRequest, bufSize),
+	}, nil
 }
 
-func (p *Producer) worker() {
-	defer p.wg.Done()
+func (p *Producer) Start(ctx context.Context) {
+	p.ctx = ctx
+	go p.loop(ctx)
+}
+
+func (p *Producer) loop(ctx context.Context) {
 	for {
 		select {
-		case job := <-p.in:
-			err := p.client.ProduceSync(job.ctx, job.records...).FirstErr()
-			job.errCh <- err
-		case <-p.quit:
+		case <-ctx.Done():
 			return
+		case req := <-p.requests:
+			if req.ctx.Err() != nil {
+				req.errCh <- nil
+				continue
+			}
+			err := p.client.ProduceSync(req.ctx, req.records...).FirstErr()
+			req.errCh <- err
 		}
 	}
 }
 
 func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, opts ...noskafka.ProduceOption) error {
+	if p.ctx == nil {
+		return xerrors.New("producer is not started")
+	}
+
 	builder := &RecordBuilder{}
 	for _, opt := range opts {
 		if err := opt(builder); err != nil {
@@ -99,25 +92,29 @@ func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, 
 		})
 	}
 
-	errCh := make(chan error, 1)
-	job := produceJob{ctx: ctx, records: records, errCh: errCh}
-
-	select {
-	case p.in <- job:
-	case <-ctx.Done():
-		return ctx.Err()
+	req := produceRequest{
+		ctx:     ctx,
+		records: records,
+		errCh:   make(chan error, 1),
 	}
 
 	select {
-	case err := <-errCh:
-		return err
 	case <-ctx.Done():
 		return ctx.Err()
+	case p.requests <- req:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.ctx.Done():
+		return p.ctx.Err()
+	case err := <-req.errCh:
+		return err
 	}
 }
 
 func (p *Producer) Close() {
-	close(p.quit)
-	p.wg.Wait()
 	p.client.Close()
 }
+
