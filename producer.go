@@ -2,9 +2,11 @@ package nosfranz
 
 import (
 	"context"
+	"errors"
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"golang.org/x/xerrors"
 )
@@ -17,8 +19,8 @@ type TopicConfig struct {
 }
 
 type ProducerConfig struct {
-	Brokers     []string
-	BufferSize  int
+	Brokers    []string
+	BufferSize int
 	// AutoCreateTopic, when non-nil, creates missing topics before producing.
 	AutoCreateTopic *TopicConfig
 }
@@ -152,16 +154,18 @@ func (p *Producer) ensureTopics(ctx context.Context, records []*kgo.Record) erro
 		return xerrors.Errorf("failed to create topics: %w", err)
 	}
 	if err := responses.Error(); err != nil {
-		return err
+		if !errors.Is(err, kerr.TopicAlreadyExists) {
+			return err
+		}
 	}
 
 	for _, topic := range topics {
 		p.createdTopics[topic] = struct{}{}
 	}
+
 	return nil
 }
 
 func (p *Producer) Close() {
 	p.client.Close()
 }
-
