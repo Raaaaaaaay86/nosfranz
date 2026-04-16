@@ -47,6 +47,13 @@ func (f *FranzBatchConsumer) Start(ctx context.Context) error {
 }
 
 func (f *FranzBatchConsumer) runBatch() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("batch topic listening panic", "identifier", f.identifier, "recover", r, "brokers", f.config.ConnectionInfo.Brokers, "groupId", f.config.ConnectionInfo.GroupId, "topics", f.config.ConnectionInfo.Topics)
+		} else {
+			slog.Info("batch topic listening exited", "identifier", f.identifier, "brokers", f.config.ConnectionInfo.Brokers, "groupId", f.config.ConnectionInfo.GroupId, "topics", f.config.ConnectionInfo.Topics)
+		}
+	}()
 	defer f.wg.Done()
 	defer f.cleanupClient()
 
