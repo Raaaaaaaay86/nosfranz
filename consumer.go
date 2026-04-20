@@ -2,28 +2,33 @@ package nosfranz
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 )
 
 var _ noskafka.Consumer = (*FranzConsumer)(nil)
 
 type FranzConsumer struct {
-	identifier noskafka.Identifier
-	signalChan chan<- noskafka.Signal
-	config     Config
-	mu         sync.RWMutex
-	client     *kgo.Client
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	started    atomic.Bool
-	closed     atomic.Bool
+	identifier     noskafka.Identifier
+	signalChan     chan<- noskafka.Signal
+	tracerProvider trace.TracerProvider
+	config         Config
+	mu             sync.RWMutex
+	client         *kgo.Client
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
+	started        atomic.Bool
+	closed         atomic.Bool
 }
 
 func NewFranzConsumer(config Config) *FranzConsumer {
@@ -141,7 +146,7 @@ func (f *FranzConsumer) processFetches(ctx context.Context, client *kgo.Client, 
 	var processedRecords []*kgo.Record
 
 	fetches.EachRecord(func(r *kgo.Record) {
-		if f.processRecord(ctx, r) {
+		if f.processRecord(r) {
 			processedRecords = append(processedRecords, r)
 		}
 	})
@@ -154,7 +159,7 @@ func (f *FranzConsumer) processFetches(ctx context.Context, client *kgo.Client, 
 	}
 }
 
-func (f *FranzConsumer) processRecord(ctx context.Context, r *kgo.Record) bool {
+func (f *FranzConsumer) processRecord(r *kgo.Record) bool {
 	msg := &noskafka.Message{
 		Key:       r.Key,
 		Partition: int(r.Partition),
@@ -170,18 +175,41 @@ func (f *FranzConsumer) processRecord(ctx context.Context, r *kgo.Record) bool {
 		})
 	}
 
-	pctx := ctx
-	if f.config.ProcessTimeout > 0 {
-		var cancel context.CancelFunc
-		pctx, cancel = context.WithTimeout(ctx, f.config.ProcessTimeout)
-		defer cancel()
+	ctx := context.Background()
+
+	if f.tracerProvider != nil {
+		tctx, span := f.withTracedContext(ctx, r)
+		defer span.End()
+
+		ctx = tctx
 	}
 
-	nctx := noskafka.NewContext(pctx, f.config.Handlers)
+	if f.config.ProcessTimeout > 0 {
+		var cancel context.CancelFunc
+		pctx, cancel := context.WithTimeout(ctx, f.config.ProcessTimeout)
+		defer cancel()
+
+		ctx = pctx
+	}
+
+	nctx := noskafka.NewContext(ctx, f.config.Handlers)
 	nctx.SetMessage(msg)
 	nctx.Next()
 
 	return nctx.Err() == nil
+}
+
+func (f *FranzConsumer) withTracedContext(ctx context.Context, record *kgo.Record) (context.Context, trace.Span) {
+	tctx, span := f.tracerProvider.Tracer("").Start(ctx, fmt.Sprintf("kafka.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
+
+	span.SetAttributes(
+		attribute.String("brokers", strings.Join(f.config.ConnectionInfo.Brokers, ",")),
+		attribute.String("group_id", f.config.ConnectionInfo.GroupId.String()),
+		attribute.String("app.consume_mode", "single"),
+		attribute.Int("message.value.size", len(record.Value)),
+	)
+
+	return tctx, span
 }
 
 func (f *FranzConsumer) SetIdentifier(identifier noskafka.Identifier) {
@@ -194,6 +222,10 @@ func (f *FranzConsumer) GetIdentifier() noskafka.Identifier {
 
 func (f *FranzConsumer) SetSignalChan(ch chan<- noskafka.Signal) {
 	f.signalChan = ch
+}
+
+func (f *FranzConsumer) SetTracerProvider(tracerProvider trace.TracerProvider) {
+	f.tracerProvider = tracerProvider
 }
 
 func (f *FranzConsumer) GetConnectionInfo() noskafka.ConnectionInfo {

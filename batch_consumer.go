@@ -2,11 +2,15 @@ package nosfranz
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 )
 
@@ -111,7 +115,7 @@ func (f *FranzBatchConsumer) runBatch() {
 	}
 }
 
-func (f *FranzBatchConsumer) processBatch(ctx context.Context, client *kgo.Client, records []*kgo.Record) {
+func (f *FranzBatchConsumer) processBatch(client *kgo.Client, records []*kgo.Record) {
 	messages := make([]*noskafka.Message, len(records))
 	for i, r := range records {
 		messages[i] = &noskafka.Message{
@@ -130,14 +134,24 @@ func (f *FranzBatchConsumer) processBatch(ctx context.Context, client *kgo.Clien
 		}
 	}
 
-	pctx := ctx
-	if f.config.ProcessTimeout > 0 {
-		var cancel context.CancelFunc
-		pctx, cancel = context.WithTimeout(ctx, f.config.ProcessTimeout)
-		defer cancel()
+	ctx := context.Background()
+
+	if f.tracerProvider != nil {
+		tctx, span := f.withTracedContext(ctx)
+		defer span.End()
+
+		ctx = tctx
 	}
 
-	bctx := noskafka.NewBatchContext(pctx, f.config.BatchHandlers)
+	if f.config.ProcessTimeout > 0 {
+		var cancel context.CancelFunc
+		pctx, cancel := context.WithTimeout(ctx, f.config.ProcessTimeout)
+		defer cancel()
+
+		ctx = pctx
+	}
+
+	bctx := noskafka.NewBatchContext(ctx, f.config.BatchHandlers)
 	bctx.SetMessages(messages)
 	bctx.Next()
 
@@ -147,4 +161,16 @@ func (f *FranzBatchConsumer) processBatch(ctx context.Context, client *kgo.Clien
 			f.sendSignal(noskafka.ErrorSignalLevel, "batch commit failed", err)
 		}
 	}
+}
+
+func (f *FranzBatchConsumer) withTracedContext(ctx context.Context) (context.Context, trace.Span) {
+	tctx, span := f.tracerProvider.Tracer("").Start(ctx, fmt.Sprintf("kafka.batch.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
+
+	span.SetAttributes(
+		attribute.String("brokers", strings.Join(f.config.ConnectionInfo.Brokers, ",")),
+		attribute.String("group_id", f.config.ConnectionInfo.GroupId.String()),
+		attribute.String("app.consume_mode", "batch"),
+	)
+
+	return tctx, span
 }
