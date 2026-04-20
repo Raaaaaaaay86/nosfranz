@@ -71,7 +71,7 @@ func (f *FranzBatchConsumer) runBatch() {
 		if len(buffer) == 0 {
 			return
 		}
-		f.processBatch(f.ctx, f.getClient(), buffer)
+		f.processBatch(f.getClient(), buffer)
 		buffer = buffer[:0]
 		ticker.Reset(batchTimeout)
 	}
