@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 )
@@ -202,12 +200,7 @@ func (f *FranzConsumer) processRecord(r *kgo.Record) bool {
 func (f *FranzConsumer) withTracedContext(ctx context.Context, record *kgo.Record) (context.Context, trace.Span) {
 	tctx, span := f.tracerProvider.Tracer("").Start(ctx, fmt.Sprintf("kafka.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
 
-	span.SetAttributes(
-		attribute.String("brokers", strings.Join(f.config.ConnectionInfo.Brokers, ",")),
-		attribute.String("group_id", f.config.ConnectionInfo.GroupId.String()),
-		attribute.String("app.consume_mode", "single"),
-		attribute.Int("message.value.size", len(record.Value)),
-	)
+	span.SetAttributes(getSingleConsumeAttributes(record, f.config.ConnectionInfo.GroupId.String())...)
 
 	return tctx, span
 }

@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 )
@@ -116,6 +114,15 @@ func (f *FranzBatchConsumer) runBatch() {
 }
 
 func (f *FranzBatchConsumer) processBatch(client *kgo.Client, records []*kgo.Record) {
+	ctx := context.Background()
+
+	if f.tracerProvider != nil {
+		tctx, span := f.withTracedContext(ctx, records)
+		defer span.End()
+
+		ctx = tctx
+	}
+
 	messages := make([]*noskafka.Message, len(records))
 	for i, r := range records {
 		messages[i] = &noskafka.Message{
@@ -132,15 +139,6 @@ func (f *FranzBatchConsumer) processBatch(client *kgo.Client, records []*kgo.Rec
 				Value: h.Value,
 			})
 		}
-	}
-
-	ctx := context.Background()
-
-	if f.tracerProvider != nil {
-		tctx, span := f.withTracedContext(ctx)
-		defer span.End()
-
-		ctx = tctx
 	}
 
 	if f.config.ProcessTimeout > 0 {
@@ -163,14 +161,10 @@ func (f *FranzBatchConsumer) processBatch(client *kgo.Client, records []*kgo.Rec
 	}
 }
 
-func (f *FranzBatchConsumer) withTracedContext(ctx context.Context) (context.Context, trace.Span) {
+func (f *FranzBatchConsumer) withTracedContext(ctx context.Context, records []*kgo.Record) (context.Context, trace.Span) {
 	tctx, span := f.tracerProvider.Tracer("").Start(ctx, fmt.Sprintf("kafka.batch.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
 
-	span.SetAttributes(
-		attribute.String("brokers", strings.Join(f.config.ConnectionInfo.Brokers, ",")),
-		attribute.String("group_id", f.config.ConnectionInfo.GroupId.String()),
-		attribute.String("app.consume_mode", "batch"),
-	)
+	span.SetAttributes(getBatchConsumeAttributes(records, f.GetConnectionInfo().GroupId.String())...)
 
 	return tctx, span
 }

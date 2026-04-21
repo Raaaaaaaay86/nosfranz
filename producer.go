@@ -8,6 +8,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 )
 
@@ -19,10 +20,14 @@ type TopicConfig struct {
 }
 
 type ProducerConfig struct {
-	Brokers    []string
+	// Brokers represents the endpoints of Kafka nodes.
+	Brokers []string
+	// BufferSize is the size of buffered channel to perform back-pressure pattern.
 	BufferSize int
-	// AutoCreateTopic, when non-nil, creates missing topics before producing.
+	// AutoCreateTopic creates for topics not exists in the Kafka Cluster.
 	AutoCreateTopic *TopicConfig
+	// TracerProvider is for turning telemetry feature on. Producer will generate traces during runtime.
+	TracerProvider trace.TracerProvider
 }
 
 type produceRequest struct {
@@ -135,6 +140,10 @@ func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, 
 	case err := <-req.errCh:
 		return err
 	}
+}
+
+func (p *Producer) withTracedContext(ctx context.Context) (context.Context, trace.Span) {
+	return nil, nil
 }
 
 func (p *Producer) ensureTopics(ctx context.Context, records []*kgo.Record) error {
