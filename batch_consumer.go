@@ -162,7 +162,7 @@ func (f *FranzBatchConsumer) processBatch(client *kgo.Client, records []*kgo.Rec
 }
 
 func (f *FranzBatchConsumer) withTracedContext(ctx context.Context, records []*kgo.Record) (context.Context, trace.Span) {
-	tctx, span := f.tracerProvider.Tracer("").Start(ctx, fmt.Sprintf("kafka.batch.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
+	tctx, span := f.tracerProvider.Tracer(TRACER_NAME).Start(ctx, fmt.Sprintf("kafka.batch.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
 
 	span.SetAttributes(getBatchConsumeAttributes(records, f.GetConnectionInfo().GroupId.String())...)
 

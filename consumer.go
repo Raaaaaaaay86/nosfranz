@@ -198,7 +198,7 @@ func (f *FranzConsumer) processRecord(r *kgo.Record) bool {
 }
 
 func (f *FranzConsumer) withTracedContext(ctx context.Context, record *kgo.Record) (context.Context, trace.Span) {
-	tctx, span := f.tracerProvider.Tracer("").Start(ctx, fmt.Sprintf("kafka.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
+	tctx, span := f.tracerProvider.Tracer(TRACER_NAME).Start(ctx, fmt.Sprintf("kafka.%s", f.config.ConnectionInfo.Topics.JoinedBy(":")))
 
 	span.SetAttributes(getSingleConsumeAttributes(record, f.config.ConnectionInfo.GroupId.String())...)
 
