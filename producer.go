@@ -3,11 +3,13 @@ package nosfranz
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/raaaaaaaay86/noskafka"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/xerrors"
 )
@@ -34,6 +36,7 @@ type produceRequest struct {
 	ctx     context.Context
 	records []*kgo.Record
 	errCh   chan error
+	endSpan func()
 }
 
 type Producer struct {
@@ -80,16 +83,21 @@ func (p *Producer) loop(ctx context.Context) {
 		case req := <-p.requests:
 			if req.ctx.Err() != nil {
 				req.errCh <- nil
+				req.endSpan()
 				continue
 			}
+
 			if p.config.AutoCreateTopic != nil {
 				if err := p.ensureTopics(req.ctx, req.records); err != nil {
 					req.errCh <- err
+					req.endSpan()
 					continue
 				}
 			}
+
 			err := p.client.ProduceSync(req.ctx, req.records...).FirstErr()
 			req.errCh <- err
+			req.endSpan()
 		}
 	}
 }
@@ -124,6 +132,15 @@ func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, 
 		ctx:     ctx,
 		records: records,
 		errCh:   make(chan error, 1),
+		endSpan: func() {},
+	}
+
+	if p.config.TracerProvider != nil {
+		tctx, span := p.withTracedContext(ctx)
+		req.ctx = tctx
+		req.endSpan = func() {
+			span.End()
+		}
 	}
 
 	select {
@@ -143,7 +160,15 @@ func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, 
 }
 
 func (p *Producer) withTracedContext(ctx context.Context) (context.Context, trace.Span) {
-	return nil, nil
+	tctx, span := p.config.TracerProvider.Tracer(TRACER_NAME).Start(ctx, "kafka.producer")
+
+	span.SetAttributes(
+		attribute.String("messaging.operation.type", "send"),
+		attribute.String("messaging.operation.name", "send"),
+		attribute.String("server.address", strings.Join(p.config.Brokers, ",")),
+	)
+
+	return tctx, span
 }
 
 func (p *Producer) ensureTopics(ctx context.Context, records []*kgo.Record) error {
