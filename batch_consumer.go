@@ -17,11 +17,20 @@ type FranzBatchConsumer struct {
 }
 
 func NewFranzBatchConsumer(config Config) *FranzBatchConsumer {
-	return &FranzBatchConsumer{
+	consumer := &FranzBatchConsumer{
 		FranzConsumer: FranzConsumer{
 			config: config,
 		},
 	}
+
+	if len(config.BatchHandlers) > 0 {
+		name, ok := getHandlerName(config.BatchHandlers[len(config.BatchHandlers)])
+		if ok {
+			consumer.name = name
+		}
+	}
+
+	return consumer
 }
 
 // Start Override FranzConsumer.Start to support batch consuming

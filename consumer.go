@@ -16,6 +16,7 @@ import (
 var _ noskafka.Consumer = (*FranzConsumer)(nil)
 
 type FranzConsumer struct {
+	name           string
 	identifier     noskafka.Identifier
 	signalChan     chan<- noskafka.Signal
 	tracerProvider trace.TracerProvider
@@ -30,9 +31,18 @@ type FranzConsumer struct {
 }
 
 func NewFranzConsumer(config Config) *FranzConsumer {
-	return &FranzConsumer{
+	consumer := &FranzConsumer{
 		config: config,
 	}
+
+	if len(config.Handlers) > 0 {
+		name, ok := getHandlerName(config.Handlers[len(config.Handlers)])
+		if ok {
+			consumer.name = name
+		}
+	}
+
+	return consumer
 }
 
 func (f *FranzConsumer) Start(ctx context.Context) error {
@@ -132,6 +142,7 @@ func (f *FranzConsumer) cleanupClient() {
 func (f *FranzConsumer) sendSignal(level noskafka.SignalLevel, message string, err error) {
 	if f.signalChan != nil {
 		f.signalChan <- noskafka.Signal{
+			Name:       f.name,
 			Level:      level,
 			Identifier: f.identifier,
 			Message:    message,

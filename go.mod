@@ -3,7 +3,7 @@ module github.com/raaaaaaaay86/nosfranz
 go 1.25.0
 
 require (
-	github.com/raaaaaaaay86/noskafka v0.0.8
+	github.com/raaaaaaaay86/noskafka v0.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/twmb/franz-go v1.20.7
 	github.com/twmb/franz-go/pkg/kadm v1.17.2
