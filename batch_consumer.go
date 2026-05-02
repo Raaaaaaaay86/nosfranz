@@ -90,11 +90,11 @@ func (f *FranzBatchConsumer) runBatch() {
 		}
 
 		// Use a smaller timeout for PollRecords in batch mode to allow ticker to fire
-		pollCtx, pollCancel := context.WithTimeout(f.ctx, 100*time.Millisecond)
+		pollCtx, pollCancel := context.WithTimeout(f.ctx, batchTimeout)
 		fetches := client.PollRecords(pollCtx, -1)
 		pollCancel()
 
-		if err := fetches.Err(); err != nil && err != context.Canceled {
+		if err := fetches.Err(); err != nil && err != context.Canceled && err != context.DeadlineExceeded {
 			f.sendSignal(noskafka.ErrorSignalLevel, "poll error", err)
 			// If error is fatal, we might want to send FailureSignalLevel
 			// For now, let's keep it as Error unless it's a known fatal error
