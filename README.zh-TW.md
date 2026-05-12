@@ -1,6 +1,12 @@
-# nosfranz
+<h1 align="center"> nosfranz </h1>
 
-`nosfranz` 是基於 [franz-go](https://github.com/twmb/franz-go) 的 [`noskafka`](https://github.com/raaaaaaaay86/noskafka) `Consumer` 與 `Producer` 介面具體實作。它處理 polling、記錄處理、offset 提交，以及選擇性的自動建立 topic。
+<p>
+nosfranz 是基於 <a href="https://github.com/twmb/franz-go">franz-go</a> 的 <a href="https://github.com/raaaaaaaay86/noskafka">noskafka</a> Consumer 與 Producer 介面具體實作。它處理 polling、記錄處理、offset 提交，以及選擇性的自動建立 topic。
+</p>
+
+<p align="center">
+  <a href="README.md">English</a>
+</p>
 
 ## 安裝
 

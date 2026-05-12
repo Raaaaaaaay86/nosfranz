@@ -1,8 +1,14 @@
-# nosfranz
+<h1 align="center"> nosfranz </h1>
 
-`nosfranz` is the [franz-go](https://github.com/twmb/franz-go) backed implementation of the [`noskafka`](https://github.com/raaaaaaaay86/noskafka) `Consumer` and `Producer` interfaces. It handles polling, record processing, offset committing, and optional auto-topic creation.
+<p>
+nosfranz is the <a href="https://github.com/twmb/franz-go">franz-go</a> backed implementation of the <a href="https://github.com/raaaaaaaay86/noskafka">noskafka</a> Consumer and Producer interfaces. It handles polling, record processing, offset committing, and optional auto-topic creation.
+</p>
 
-## Installation
+<p align="center">
+  <a href="README.zh-TW.md">中文</a>
+</p>
+
+## Install
 
 ```bash
 go get github.com/raaaaaaaay86/nosfranz
