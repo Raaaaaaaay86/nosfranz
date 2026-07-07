@@ -24,7 +24,7 @@ func NewFranzBatchConsumer(config Config) *FranzBatchConsumer {
 	}
 
 	if len(config.BatchHandlers) > 0 {
-		name, ok := getHandlerName(config.BatchHandlers[len(config.BatchHandlers)])
+		name, ok := getHandlerName(config.BatchHandlers[len(config.BatchHandlers)-1])
 		if ok {
 			consumer.name = name
 		}
