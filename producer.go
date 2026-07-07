@@ -161,6 +161,8 @@ func (p *Producer) Produce(ctx context.Context, messages []noskafka.Producible, 
 			span.SetAttributes(attribute.Int64("worker_serial", int64(serial)))
 			span.End()
 		}
+	} else {
+		req.endSpan = func(i int) {}
 	}
 
 	select {
