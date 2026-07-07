@@ -113,8 +113,11 @@ func (f *FranzConsumer) initClient() (*kgo.Client, error) {
 
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(f.config.ConnectionInfo.Brokers...),
-		kgo.ConsumerGroup(string(f.config.ConnectionInfo.GroupId)),
 		kgo.ConsumeTopics(topics...),
+	}
+
+	if f.config.ConnectionInfo.GroupId == "" {
+		opts = append(opts, kgo.ConsumerGroup(string(f.config.ConnectionInfo.GroupId)))
 	}
 
 	if !f.config.AutoCommit {
