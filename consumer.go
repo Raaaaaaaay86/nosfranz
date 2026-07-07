@@ -124,6 +124,10 @@ func (f *FranzConsumer) initClient() (*kgo.Client, error) {
 		opts = append(opts, kgo.DisableAutoCommit())
 	}
 
+	if offset := f.config.StartOffset; offset != nil {
+		opts = append(opts, kgo.ConsumeStartOffset(*offset))
+	}
+
 	return kgo.NewClient(opts...)
 }
 

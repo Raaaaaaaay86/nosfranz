@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/raaaaaaaay86/noskafka"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type Config struct {
@@ -14,6 +15,7 @@ type Config struct {
 	AutoCommit     bool
 	BatchSize      int
 	BatchTimeout   time.Duration
+	StartOffset    *kgo.Offset
 }
 
 func (c Config) GetBatchSize() int {
